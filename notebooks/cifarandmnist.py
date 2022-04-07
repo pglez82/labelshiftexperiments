@@ -5,6 +5,8 @@ import scipy
 import sys
 import abstention.calibration
 
+from histnetlabelshift import HistNetAdapter
+
 
 def read_labels(fh):
     to_return = []
@@ -99,7 +101,9 @@ def run_experiments(num_trials, seeds, alphas_and_samplesize,
                     adaptncalib_pairs, 
                     validglobprefix,
                     testglobprefix,
-                    valid_labels, test_labels):
+                    valid_labels, test_labels, 
+                    x_test):
+                    # New parameter for histnet, we need the x to quantify
 
     draw_test_indices = get_func_to_draw_label_proportions(test_labels)
 
@@ -168,6 +172,7 @@ def run_experiments(num_trials, seeds, alphas_and_samplesize,
                                  rng=rng)
                 shifted_test_labels = test_labels[test_indices]
                 shifted_test_preacts = test_preacts[test_indices]
+                bag_x = x_test[test_indices,:]
 
                 calibname_to_calibshiftedtestpreds = {}
                 for (calibname, calibfunc) in calibname_to_calibfunc.items():
@@ -192,10 +197,13 @@ def run_experiments(num_trials, seeds, alphas_and_samplesize,
                                          calib_name]
                     imbalance_adapter =\
                       imbalanceadaptername_to_imbalanceadapter[adapter_name]
-                    imbalance_adapter_func = imbalance_adapter(
-                        valid_labels=sample_valid_labels,
-                        tofit_initial_posterior_probs=calib_shifted_test_preds,
-                        valid_posterior_probs=calib_valid_preds)
+                    if isinstance(imbalance_adapter, HistNetAdapter):
+                        imbalance_adapter_func = imbalance_adapter(X=bag_x, train_prevalence=np.mean(sample_valid_labels,axis=0), test_prevalences=np.mean(shifted_test_labels,axis=0))
+                    else:
+                        imbalance_adapter_func = imbalance_adapter(
+                            valid_labels=sample_valid_labels,
+                            tofit_initial_posterior_probs=calib_shifted_test_preds,
+                            valid_posterior_probs=calib_valid_preds)
                     shift_weights = imbalance_adapter_func.multipliers
                     unnormed_estimshiftedpriors = np.mean(
                         sample_valid_labels, axis=0)*shift_weights
